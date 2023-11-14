@@ -1,0 +1,101 @@
+
+--funnel step for user and rider counts
+WITH customer_funnel AS(
+    SELECT 
+      1 AS funnel_step
+      ,'Apps Downloaded' AS stages
+      ,COUNT(DISTINCT app_download_key) AS total_cnt --counting the number of distinct downloads made
+  		,NULL::bigint AS ride_cnt --adding blank colomn to equalize the number of columns to unionize for rides not yet completed
+    FROM app_downloads
+
+ 	UNION 
+
+    SELECT 
+      2 AS funnel_step
+      ,'User Signup' AS stages
+      ,COUNT(DISTINCT user_id) AS total_cnt --counting the number of distinct users that signed up after download
+  		,NULL::bigint AS ride_cnt--adding blank colomn to equalize the number of columns to unionize for rides not yet completed
+    FROM signups
+
+  UNION 
+
+
+    SELECT 
+      3 AS funnel_step
+      ,'Rides requested' AS stages
+      ,COUNT(DISTINCT user_id) AS total_cnt --counting the number of distinct users that requested a ride after signup
+  		,COUNT(ride_id) AS ride_cnt --counting the total number of rides requested
+    FROM ride_requests
+  	WHERE request_ts IS NOT NULL
+
+  UNION 
+  
+  	SELECT 
+      4 AS funnel_step
+      ,'Driver Acceptance' AS stages
+      ,COUNT(DISTINCT user_id) AS total_cnt --counting the number of distinct users whose rides were accepted by drivers 
+  		,COUNT(ride_id) AS ride_cnt --counting the total number of rides accepted
+    FROM ride_requests
+  	WHERE accept_ts IS NOT NULL
+   
+  UNION 
+  
+  	SELECT 
+      5 AS funnel_step
+      ,'Pickup' AS stages
+      ,COUNT(DISTINCT user_id) AS total_cnt --counting the number of distinct users who got picked up from heir locations by the drivers
+  		,COUNT(ride_id) AS ride_cnt ----counting the total number of rides completed
+    FROM ride_requests
+  	WHERE pickup_ts IS NOT NULL
+
+
+  UNION 
+  
+  	SELECT 
+      6 AS funnel_step
+      ,'Payment' AS stages
+      ,COUNT(DISTINCT user_id) AS total_cnt --counting the number of distinct users whose payments where approved after dropoff
+  		,COUNT(ride_id) AS ride_cnt --counting the total number of rides with approved payments 
+    FROM transactions
+  	LEFT JOIN ride_requests
+  	USING(ride_id)
+  	WHERE charge_status ='Approved'
+  
+  UNION 
+  
+  	SELECT 
+      7 AS funnel_step
+      ,'Review' AS stages
+      ,COUNT(DISTINCT user_id) AS total_cnt --counting the total number of distinct users that dropped a review for their rides
+  		,COUNT(ride_id) AS ride_cnt --counting the total numbers of rides that had a review
+    FROM reviews)
+  	
+  
+  
+
+  
+  
+SELECT
+	funnel_step
+	,stages
+  ,total_cnt
+  ,CASE
+        WHEN ride_cnt IS NULL THEN ' '  -- Replace NULL with empty string for display
+        ELSE ride_cnt::text
+    END AS ride_cnt
+  ,LAG(total_cnt) OVER (ORDER BY funnel_step ) AS previous_total_cnt --getting the previous values from the total_cnt column
+	,ROUND((total_cnt *1.0/ LAG(total_cnt) OVER ())*100,2) AS conversion_percent_of_previous --getting the percent of conversion in each step of the funnel
+  ,ROUND((total_cnt *1.0/ first_value(total_cnt) OVER ())*100,2) AS conversion_percent_of_top
+  ,ROUND((1-(total_cnt *1.0/ lag(total_cnt) OVER () ))*100 ,2)AS dropoff_percent_from_previous --getting the percent of dropoff in each step of the funnel
+  ,ROUND((1-total_cnt *1.0/ first_value(total_cnt) OVER ())*100,2) AS dropoff_percent_of_top
+FROM customer_funnel
+ORDER BY funnel_step
+
+
+
+
+
+
+
+
+

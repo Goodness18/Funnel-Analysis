@@ -1,0 +1,140 @@
+--monthly funnel analysis for each stages
+WITH download_month AS(
+  SELECT 
+  	CONCAT(LPAD(EXTRACT(MONTH FROM download_ts)::TEXT,2,'0')
+                ,'/'
+                ,EXTRACT(YEAR FROM download_ts)) AS month_year
+    ,COUNT(*) AS downlaod_cnt
+  FROM app_downloads AS a
+  LEFT JOIN signups AS s
+  ON a.app_download_key=s.session_id
+  GROUP BY month_year
+  ORDER BY month_year
+),
+signup_month AS(
+  SELECT 
+  	CONCAT(LPAD(EXTRACT(MONTH FROM signup_ts)::TEXT,2,'0')
+                ,'/'
+                ,EXTRACT(YEAR FROM signup_ts)) AS month_year
+    ,COUNT(DISTINCT user_id) AS signup_cnt
+  FROM signups AS s
+  LEFT JOIN app_downloads AS a
+  ON a.app_download_key=s.session_id
+  GROUP BY month_year
+  ORDER BY month_year 
+),
+
+ride_requests_month AS(
+  SELECT 
+  	CONCAT(LPAD(EXTRACT(MONTH FROM request_ts)::TEXT,2,'0')
+                ,'/'
+                ,EXTRACT(YEAR FROM request_ts)) AS month_year
+    ,COUNT(DISTINCT user_id) AS ride_requests_cnt
+  FROM ride_requests AS rr
+  LEFT JOIN signups AS s
+  USING(user_id)
+  WHERE request_ts IS NOT NULL
+  GROUP BY month_year
+  ORDER BY month_year
+),
+
+driver_accepted_month AS(
+  SELECT 
+  	CONCAT(LPAD(EXTRACT(MONTH FROM accept_ts)::TEXT,2,'0')
+                ,'/'
+                ,EXTRACT(YEAR FROM accept_ts)) AS month_year
+    ,COUNT(DISTINCT user_id) AS driver_accepted_cnt
+  FROM ride_requests AS rr
+  LEFT JOIN signups AS s
+  USING(user_id)
+  WHERE accept_ts IS NOT NULL
+  GROUP BY month_year
+  ORDER BY month_year
+),
+
+pickup_month AS(
+  SELECT 
+  	CONCAT(LPAD(EXTRACT(MONTH FROM pickup_ts)::TEXT,2,'0')
+                ,'/'
+                ,EXTRACT(YEAR FROM pickup_ts)) AS month_year
+    ,COUNT(DISTINCT user_id) AS pickup_cnt
+  FROM ride_requests AS rr
+  LEFT JOIN signups AS s
+  USING(user_id)
+  WHERE pickup_ts IS NOT NULL
+  GROUP BY month_year
+  ORDER BY month_year
+),
+
+payment_month AS(
+  SELECT 
+  	CONCAT(LPAD(EXTRACT(MONTH FROM transaction_ts)::TEXT,2,'0')
+                ,'/'
+                ,EXTRACT(YEAR FROM transaction_ts)) AS month_year
+    ,COUNT(DISTINCT user_id) AS payment_cnt
+  FROM transactions
+  LEFT JOIN ride_requests AS rr
+  USING(ride_id)
+  LEFT JOIN signups AS s
+  USING(user_id)
+	WHERE charge_status ='Approved'
+  GROUP BY month_year
+  ORDER BY month_year
+),
+
+review_month AS(
+  SELECT 
+  	CONCAT(LPAD(EXTRACT(MONTH FROM transaction_ts)::TEXT,2,'0')
+                ,'/'
+                ,EXTRACT(YEAR FROM transaction_ts)) AS month_year
+    ,COUNT(DISTINCT user_id) AS review_cnt
+  FROM reviews
+  left join transactions AS t
+  USING(ride_id)
+  LEFT JOIN signups AS s
+  USING(user_id)
+  GROUP BY month_year
+  ORDER BY month_year
+)
+SELECT 
+	month_year
+  ,downlaod_cnt
+  --,signup_cnt
+  ,ROUND((signup_cnt*1.0/downlaod_cnt),2) AS signup_convert
+  ,ROUND(1-(signup_cnt*1.0/downlaod_cnt),2) AS signup_dropoff
+ -- ,ride_requests_cnt
+ 	,ROUND((ride_requests_cnt*1.0/signup_cnt),2) AS ride_request_convert
+,ROUND(1-(ride_requests_cnt*1.0/signup_cnt),2) AS  ride_request_dropoff
+--,driver_accepted_cnt
+,ROUND((driver_accepted_cnt*1.0/ride_requests_cnt),2) AS driver_accepted_convert
+,ROUND(1-(driver_accepted_cnt*1.0/ride_requests_cnt),2) AS driver_accepted_dropoff
+--,pickup_cnt
+,ROUND((pickup_cnt*1.0/driver_accepted_cnt),2) AS pickup_convert
+,ROUND(1-(pickup_cnt*1.0/driver_accepted_cnt),2) AS pickup_dropoff
+--,payment_cnt
+,ROUND((payment_cnt*1.0/pickup_cnt),2) AS payment_convert
+,ROUND(1-(payment_cnt*1.0/pickup_cnt),2) AS payment_dropoff
+--,review_cnt
+,ROUND((review_cnt*1.0/payment_cnt),2) AS review_convert
+,ROUND(1-(review_cnt*1.0/payment_cnt),2) AS review_dropoff
+FROM download_month
+JOIN signup_month
+USING(month_year)
+JOIN ride_requests_month
+USING(month_year)	
+JOIN driver_accepted_month
+USING(month_year)  
+JOIN pickup_month
+USING(month_year)  
+JOIN payment_month
+USING(month_year)  
+JOIN review_month
+USING(month_year)  
+ORDER BY month_year
+
+
+
+
+
+
+

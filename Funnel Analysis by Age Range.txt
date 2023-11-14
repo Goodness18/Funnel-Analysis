@@ -1,0 +1,231 @@
+
+----individual age range count of conversion for each funnel step in relation to the count of the previous step 
+WITH download_made AS (
+    SELECT 
+      age_range
+      ,COUNT(a.app_download_key) AS downloaded_apps
+  --   	,COUNT(DISTINCT s.user_id) AS signed_up_users
+    FROM app_downloads AS a
+    LEFT JOIN signups AS s
+    ON a.app_download_key = s.session_id
+    GROUP BY age_range 
+  	ORDER BY age_range
+),
+signup_made AS (
+    SELECT 
+      age_range
+    --  ,COUNT(a.app_download_key) AS downloaded_apps
+     	,COUNT(DISTINCT user_id) AS signed_up_users
+    --FROM app_downloads AS a
+   FROM signups
+  --  ON a.app_download_key = s.session_id
+    GROUP BY age_range 
+  	ORDER BY age_range
+),
+
+requests_made AS (
+		SELECT 
+  		age_range
+    	,COUNT(DISTINCT user_id) AS reqested_rides
+    FROM ride_requests AS rr
+  	LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE request_ts IS NOT NULL
+ 		GROUP BY age_range
+),
+
+drivers_accepted_rides AS (
+  	SELECT 
+      age_range
+      ,COUNT(DISTINCT user_id) AS accepted_rides
+    FROM ride_requests AS rr
+    LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE accept_ts IS NOT NULL
+  	GROUP BY age_range
+),
+  
+rides_picked_up AS (
+  SELECT
+     	age_range
+      ,COUNT(DISTINCT user_id) AS rides_picked
+    FROM ride_requests
+    LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE pickup_ts IS NOT NULL 
+		GROUP BY age_range
+),
+
+purchased_made AS (
+  	SELECT 
+      age_range
+      ,COUNT(DISTINCT user_id) AS total_purchase_cnt
+    FROM transactions
+  	LEFT JOIN ride_requests
+  	USING(ride_id)
+  	LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE charge_status ='Approved'
+  	GROUP BY age_range
+),
+
+reviewed AS (  
+  	SELECT 
+      age_range
+      ,COUNT(DISTINCT user_id) AS reviews_cnt
+    FROM reviews
+  	LEFT JOIN signups AS s
+    USING(user_id)
+  	GROUP BY age_range
+)
+  	
+SELECT 
+	download_made.age_range
+  ,downloaded_apps
+  ,signed_up_users
+  ,ROUND(signed_up_users *1.0/downloaded_apps *100,2) AS signup_convert
+  ,(1-(ROUND(signed_up_users *1.0/downloaded_apps,2)) )*100 AS download_to_signup_dropoff
+  ,reqested_rides
+  ,ROUND(reqested_rides *1.0/signed_up_users *100,2) AS request_convert
+  ,(1-(ROUND(reqested_rides *1.0/signed_up_users,2)) )*100 AS signup_to_request_dropoff
+  ,accepted_rides
+  ,ROUND(accepted_rides *1.0/reqested_rides *100,2) AS accept_convert
+  ,(1-(ROUND(accepted_rides *1.0/reqested_rides,2)) )*100 AS request_to_accept_dropoff
+  ,rides_picked
+  ,ROUND(rides_picked *1.0/accepted_rides *100,2) AS pick_convert
+  ,(1-(ROUND(rides_picked *1.0/accepted_rides,2)) )*100 AS accept_to_pickup_dropoff
+  ,total_purchase_cnt
+  ,ROUND(total_purchase_cnt *1.0/rides_picked *100,2) AS purchase_convert
+  ,(1-(ROUND(total_purchase_cnt *1.0/rides_picked,2)) )*100 AS pickup_to_payment_dropoff
+  ,reviews_cnt
+  ,ROUND(reviews_cnt *1.0/total_purchase_cnt *100,2) AS review_convert
+  ,(1-(ROUND(reviews_cnt *1.0/total_purchase_cnt,2)) )*100 AS payment_to_review_dropoff
+FROM
+	download_made
+JOIN signup_made
+USING(age_range)  
+JOIN requests_made
+USING(age_range)
+JOIN drivers_accepted_rides
+USING(age_range)
+JOIN rides_picked_up
+USING(age_range)
+JOIN purchased_made
+USING(age_range)
+JOIN reviewed
+USING(age_range)
+
+
+
+
+
+
+----individual age range count of conversion for each funnel step in relation to the total count in the age ranges
+WITH age_group AS (
+    SELECT 
+      age_range
+  		,SUM(COUNT(age_range)) OVER() AS age_group_total
+      ,COUNT(a.app_download_key) AS downloaded_apps
+     	,COUNT(DISTINCT s.user_id) AS signed_up_users
+    FROM app_downloads AS a
+    JOIN signups AS s
+    ON a.app_download_key = s.session_id
+  	WHERE age_range IS NOT NULL
+    GROUP BY age_range 
+  	ORDER BY age_range
+),
+
+requests_made AS (
+		SELECT 
+  		age_range
+    	,COUNT(DISTINCT user_id) AS reqested_rides
+    FROM ride_requests AS rr
+  	LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE request_ts IS NOT NULL
+ 		GROUP BY age_range
+),
+
+drivers_accepted_rides AS (
+  	SELECT 
+      age_range
+      ,COUNT(DISTINCT user_id) AS accepted_rides
+    FROM ride_requests AS rr
+    LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE accept_ts IS NOT NULL
+  	GROUP BY age_range
+),
+  
+rides_picked_up AS (
+  SELECT
+     	age_range
+      ,COUNT(DISTINCT user_id) AS rides_picked
+    FROM ride_requests
+    LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE pickup_ts IS NOT NULL 
+		GROUP BY age_range
+),
+
+purchased_made AS (
+  	SELECT 
+      age_range
+      ,COUNT(DISTINCT user_id) AS total_purchase_cnt
+    FROM transactions
+  	LEFT JOIN ride_requests
+  	USING(ride_id)
+  	LEFT JOIN signups AS s
+    USING(user_id)
+  	WHERE charge_status ='Approved'
+  	GROUP BY age_range
+),
+
+reviewed AS (  
+  	SELECT 
+      age_range
+      ,COUNT(DISTINCT user_id) AS reviews_cnt
+    FROM reviews
+  	LEFT JOIN signups AS s
+    USING(user_id)
+  	GROUP BY age_range
+)
+
+SELECT
+  age_group.age_range
+  ,age_group_total
+  ,downloaded_apps
+  ,ROUND(downloaded_apps *1.0/age_group_total *100,2) AS download_percent
+  ,signed_up_users
+  ,ROUND(signed_up_users *1.0/age_group_total *100,2) AS signup_percent
+  ,reqested_rides
+  ,ROUND(reqested_rides *1.0/age_group_total *100,2) AS request_percent
+  ,accepted_rides
+  ,ROUND(accepted_rides *1.0/age_group_total *100,2) AS accept_percent
+  ,rides_picked
+  ,ROUND(rides_picked *1.0/age_group_total *100,2) AS pick_percent
+  ,total_purchase_cnt
+  ,ROUND(total_purchase_cnt *1.0/age_group_total *100,2) AS purchase_percent
+  ,reviews_cnt
+  ,ROUND(reviews_cnt *1.0/age_group_total *100,2) AS review_percent
+FROM
+age_group
+JOIN requests_made
+USING(age_range)
+JOIN drivers_accepted_rides
+USING(age_range)
+JOIN rides_picked_up
+USING(age_range)
+JOIN purchased_made
+USING(age_range)
+JOIN reviewed
+USING(age_range)
+
+
+
+
+
+
+
+
+

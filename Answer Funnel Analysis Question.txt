@@ -1,0 +1,136 @@
+--How many times was the app downloaded?
+SELECT 
+  COUNT(*) AS download_count --counting the total numbers of rows
+FROM 
+  app_downloads 
+WHERE 
+  app_download_key IS NOT NULL 
+  
+  --How many users signed up on the app?
+SELECT 
+  COUNT(DISTINCT user_id) AS unique_user --no of distinct users
+FROM 
+  signups 
+  
+  
+  --How many rides were requested through the app?
+SELECT 
+  COUNT(request_ts) AS total_request --no of rides requested
+FROM 
+  ride_requests 
+  
+  
+  --How many rides were requested and completed through the app?
+SELECT 
+  COUNT(request_ts) AS total_request, 
+  --no of rides requested
+  COUNT(dropoff_ts) --no of completed rides
+FROM 
+  ride_requests 
+WHERE 
+  dropoff_ts IS NOT NULL -- excluding rides that were cancelled
+ 
+ 
+ 
+  --How many rides were requested and how many unique users requested a ride?
+SELECT 
+  COUNT(DISTINCT user_id) AS unique_user, 
+  --no of distinct users
+  COUNT(request_ts) AS total_request --no of rides requested
+FROM 
+  ride_requests 
+  
+  
+  --What is the average time of a ride from pick up to drop off?
+SELECT 
+  (
+    AVG(
+      EXTRACT(
+        EPOCH 
+        FROM 
+          (dropoff_ts - pickup_ts)
+      )
+    )
+  ) / 60 AS average_ride_duration_seconds 
+FROM 
+  ride_requests 
+  
+  
+  --How many rides were accepted by a driver?
+SELECT 
+  COUNT(*) AS accepted_rides 
+FROM 
+  ride_requests 
+WHERE 
+  accept_ts IS NOT NULL 
+  
+  
+  
+  --How many rides did we successfully collect payments and how much was collected?
+SELECT 
+  COUNT(*) AS successfull_payment, 
+  SUM(purchase_amount_usd) AS total_sum 
+FROM 
+  transactions 
+WHERE 
+  charge_status = 'Approved' 
+  
+  
+  --How many ride requests happened on each platform?
+SELECT 
+  ad.platform, 
+  COUNT(ride_id) 
+FROM 
+  app_downloads AS ad 
+  LEFT JOIN signups AS s ON ad.app_download_key = s.session_id 
+  RIGHT JOIN ride_requests USING (user_id) 
+GROUP BY 
+  ad.platform 
+  
+  
+  
+  --What is the drop-off from users signing up to users requesting a ride?
+  WITH signing_up AS (
+    SELECT 
+      COUNT(user_id) AS user_signup 
+    FROM 
+      signups
+  ), 
+  ride_requesting AS (
+    SELECT 
+      COUNT(DISTINCT user_id) AS user_request 
+    FROM 
+      ride_requests
+  ), 
+  total_signup_request AS (
+    SELECT 
+      'Signing up' AS sign_request, 
+      user_signup AS count_signup_request 
+    FROM 
+      signing_up 
+    UNION 
+    SELECT 
+      'Request ride' AS sign_request, 
+      user_request AS count_signup_request 
+    FROM 
+      ride_requesting 
+    ORDER BY 
+      count_signup_request DESC
+  ) 
+SELECT 
+  *, 
+  (
+    1 -(
+      count_signup_request :: float / lag(count_signup_request) OVER(
+        ORDER BY 
+          count_signup_request DESC
+      )
+    )
+  )* 100 AS dropoff 
+FROM 
+  total_signup_request 
+GROUP BY 
+  total_signup_request.sign_request, 
+  total_signup_request.count_signup_request 
+ORDER BY 
+  count_signup_request DESC

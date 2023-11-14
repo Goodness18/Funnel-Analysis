@@ -1,0 +1,8 @@
+--hour of the day where most ride was requested
+SELECT
+	EXTRACT(HOUR FROM request_ts) AS hour_of_the_day
+  ,COUNT(*) AS total_request
+FROM ride_requests
+WHERE request_ts IS NOT NULL
+GROUP BY hour_of_the_day
+ORDER BY hour_of_the_day 
