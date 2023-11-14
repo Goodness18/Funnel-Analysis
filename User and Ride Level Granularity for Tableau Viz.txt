@@ -1,0 +1,151 @@
+
+--funnel step for user and rider counts dynamic funnel dashboard in Tableau
+WITH customer_funnel AS(
+    SELECT 
+      1 AS funnel_step
+      ,'Apps Downloaded' AS stages
+  		,platform AS device
+  		,age_range AS ages
+  		,DATE(download_ts) AS dates_recorded -- getting the date of download
+      ,COUNT(DISTINCT app_download_key) AS user_cnt --counting the number of distinct downloads made
+  		,NULL::bigint AS ride_cnt --adding blank colomn to equalize the number of columns to unionize for rides not yet completed
+    FROM app_downloads AS a
+  	LEFT JOIN signups AS s 
+  	ON a.app_download_key = s.session_id
+		GROUP BY device, ages,dates_recorded
+  
+ 	UNION 
+
+    SELECT 
+      2 AS funnel_step
+      ,'User Signup' AS stages
+  		,platform AS device
+  		,age_range AS ages
+  		,DATE(download_ts) AS dates_recorded --getting the date of signup
+      ,COUNT(DISTINCT user_id) AS user_cnt --counting the number of distinct users that signed up after download
+  		,NULL::bigint AS ride_cnt--adding blank colomn to equalize the number of columns to unionize for rides not yet completed
+    FROM signups AS s
+  	LEFT JOIN app_downloads AS a
+  	ON a.app_download_key = s.session_id
+		GROUP BY device, ages,dates_recorded
+  
+  UNION 
+
+
+    SELECT 
+      3 AS funnel_step
+      ,'Rides requested' AS stages
+  		,platform AS device
+  		,age_range AS ages
+  		,DATE(download_ts) AS dates_recorded --getting the date of ride request
+      ,COUNT(DISTINCT user_id) AS user_cnt --counting the number of distinct users that requested a ride after signup
+  		,COUNT(ride_id) AS ride_cnt --counting the total number of rides requested
+    FROM ride_requests as rr
+  	LEFT JOIN signups AS s
+  	USING(user_id)
+  	LEFT JOIN app_downloads AS a
+  	ON a.app_download_key = s.session_id
+  	WHERE request_ts IS NOT NULL
+		GROUP BY device, ages,dates_recorded
+  
+  UNION 
+  
+  	SELECT 
+      4 AS funnel_step
+      ,'Driver Acceptance' AS stages
+  		,platform AS device
+  		,age_range AS ages
+  		,DATE(download_ts) AS dates_recorded --getting the date when ride was accepted
+      ,COUNT(DISTINCT user_id) AS user_cnt --counting the number of distinct users whose rides were accepted by drivers 
+  		,COUNT(ride_id) AS ride_cnt --counting the total number of rides accepted
+    FROM ride_requests
+   JOIN signups AS s
+  	USING(user_id)
+  	LEFT JOIN app_downloads AS a
+  	ON a.app_download_key = s.session_id
+  	WHERE accept_ts IS NOT NULL
+    GROUP BY device, ages,dates_recorded
+  
+  UNION 
+  
+  	SELECT 
+      5 AS funnel_step
+      ,'Pickup' AS stages
+  		,platform AS device
+  		,age_range AS ages
+  		,DATE(download_ts) AS dates_recorded --getting the date of ride pickup
+      ,COUNT(DISTINCT user_id) AS user_cnt --counting the number of distinct users who got picked up from heir locations by the drivers
+  		,COUNT(ride_id) AS ride_cnt ----counting the total number of rides completed
+    FROM ride_requests
+  	LEFT JOIN signups AS s
+  	USING(user_id)
+  	LEFT JOIN app_downloads AS a
+  	ON a.app_download_key = s.session_id
+  	WHERE pickup_ts IS NOT NULL
+		GROUP BY device, ages,dates_recorded
+
+  UNION 
+  
+  	SELECT 
+      6 AS funnel_step
+      ,'Payment' AS stages
+  		,platform AS device
+  		,age_range AS ages
+  		,DATE(download_ts) AS dates_recorded --getting the date of payment
+      ,COUNT(DISTINCT user_id) AS user_cnt --counting the number of distinct users whose payments where approved after dropoff
+  		,COUNT(ride_id) AS ride_cnt --counting the total number of rides with approved payments 
+    FROM transactions
+  	LEFT JOIN ride_requests
+  	USING(ride_id)
+  	LEFT JOIN signups AS s
+  	USING(user_id)
+  	LEFT JOIN app_downloads AS a
+  	ON a.app_download_key = s.session_id
+  	WHERE charge_status ='Approved'
+  	GROUP BY device, ages,dates_recorded
+  
+  UNION 
+  
+  	SELECT 
+      7 AS funnel_step
+      ,'Review' AS stages
+  		,platform AS device
+  		,age_range AS ages
+  		,DATE(download_ts) AS dates_recorded --making null since there is no date when review was made
+      ,COUNT(DISTINCT user_id) AS user_cnt --counting the total number of distinct users that dropped a review for their rides
+  		,COUNT(ride_id) AS ride_cnt --counting the total numbers of rides that had a review
+    FROM reviews
+		LEFT JOIN signups AS s
+  	USING(user_id)
+  	LEFT JOIN app_downloads AS a
+  	ON a.app_download_key = s.session_id
+  	GROUP BY device, ages, dates_recorded
+)
+  	
+  
+  
+
+  
+  
+SELECT
+	funnel_step
+	,stages
+  ,device
+  ,ages
+   , dates_recorded
+  ,user_cnt
+  ,CASE
+        WHEN ride_cnt IS NULL THEN ' '  -- Replace NULL with empty string for display
+        ELSE ride_cnt::text
+    END AS ride_cnt
+FROM customer_funnel
+ORDER BY funnel_step,device
+
+
+
+
+
+
+
+
+
